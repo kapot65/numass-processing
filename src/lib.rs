@@ -112,10 +112,7 @@ pub fn extract_amplitudes(point: &rsb_event::Point, algorithm: &Algorithm, to_ke
     amplitudes
 }
 
-
-pub fn point_to_histogramm(point: &rsb_event::Point, params: ProcessingParams) -> PointHistogram {
-    let mut amplitudes = extract_amplitudes(point, &params.algorithm, params.convert_to_kev);
-
+pub fn amplitudes_to_histogramm(mut amplitudes: BTreeMap<u64, BTreeMap<usize, f32>>, params: ProcessingParams) -> PointHistogram {
     
     let mut last_time: u64 = 0;
     let filtered = amplitudes.iter_mut().filter_map(|(time, channels)| {
