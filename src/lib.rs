@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+pub extern crate numass;
 use {histogram::PointHistogram, numass::protos::rsb_event, std::collections::BTreeMap};
 pub mod histogram;
 

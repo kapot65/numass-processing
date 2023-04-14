@@ -7,4 +7,4 @@ edition = "2021"
 
 [dependencies]
 serde = "1.0.152"
-numass = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-numass.git", tag = "0.1.1" }
+numass = { git = "https://bitbucket.org/Kapot/dataforge-parser-numass.git", tag = "0.1.2" }
