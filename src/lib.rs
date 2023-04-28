@@ -1,3 +1,5 @@
+use std::vec;
+
 use histogram::HistogramParams;
 use serde::{Deserialize, Serialize};
 pub extern crate numass;
@@ -55,11 +57,12 @@ impl Default for ProcessingParams {
 pub enum Algorithm {
     Max,
     Likhovid { left: usize, right: usize },
+    FirstPeak { threshold: i16, left: usize }
 }
 
 impl Default for Algorithm {
     fn default() -> Self {
-        Self::Likhovid { left: 6, right: 36 }
+        Self::Likhovid { left: 15, right: 36 }
     }
 }
 
@@ -86,15 +89,66 @@ const KEV_COEFF_MAX: [[f32; 2]; 7] = [
 // ];
 
 const KEV_COEFF_LIKHOVID: [[f32; 2]; 7] = [
-    [0.21068372, 0.07455444],
-    [0.22343008, 0.06619072],
-    [0.23688205, 0.0010967255],
-    [0.24058165, 0.017612457],
-    [0.2430875, 0.07686138],
-    [0.23658493, 0.055846214],
-    [0.21352, 0.039334297],
+    [
+        0.3175972,
+        0.071510315,
+    ],
+    [
+        0.2723175,
+        0.08074951,
+    ],
+    [
+        0.2869933,
+        0.082289696,
+    ],
+    [
+        0.29424095,
+        -0.0075092316,
+    ],
+    [
+        0.29598197,
+        0.06416798,
+    ],
+    [
+        0.2869933,
+        0.082289696,
+    ],
+    [
+        0.26007754,
+        -0.017463684,
+    ],
 ];
 
+const KEV_COEFF_FIRST_PEAK: [[f32; 2]; 7] = [
+    [
+        0.30209273,
+        0.058135986,
+    ],
+    [
+        0.25891086,
+        -0.0007972717,
+    ],
+    [
+        0.2746626,
+        -0.036146164,
+    ],
+    [
+        0.27816013,
+        0.050985336,
+    ],
+    [
+        0.28441244,
+        -0.08033466,
+    ],
+    [
+        0.27044022,
+        0.05974865,
+    ],
+    [
+        0.2477852,
+        -0.06184864,
+    ],
+];
 
 pub fn extract_amplitudes(point: &rsb_event::Point, algorithm: &Algorithm, to_kev: bool) -> BTreeMap<u64, BTreeMap<usize, f32>> {
 
@@ -107,15 +161,14 @@ pub fn extract_amplitudes(point: &rsb_event::Point, algorithm: &Algorithm, to_ke
 
                 let waveform = process_waveform(&frame_to_waveform(frame));
 
-                let amp = waveform_to_event(&waveform, algorithm).1;
-
-                let amp = if to_kev {
-                    convert_to_kev(&amp, channel.id as u8, algorithm)
-                } else {
-                    amp
-                };
-
-                entry.insert(channel.id as usize, amp);
+                for (_, amp) in waveform_to_events(&waveform, algorithm) {
+                    let amp = if to_kev {
+                        convert_to_kev(&amp, channel.id as u8, algorithm)
+                    } else {
+                        amp
+                    };
+                    entry.insert(channel.id as usize, amp);
+                }
             }
         }
     }
@@ -193,11 +246,15 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
             let [a, b] = KEV_COEFF_LIKHOVID[ch_id as usize];
             a * *amplitude + b
         }
+        Algorithm::FirstPeak { .. } => {
+            
+            let [a, b] = KEV_COEFF_FIRST_PEAK[ch_id as usize];
+            a * *amplitude + b
+        }
     }
 }
 
-// TODO: implement multiple amplitudes return
-pub fn waveform_to_event(waveform: &ProcessedWaveform, algorithm: &Algorithm) -> (u64, f32) {
+pub fn waveform_to_events(waveform: &ProcessedWaveform, algorithm: &Algorithm) -> Vec<(u64, f32)> {
     let (x, y) = waveform.0
         .iter()
         .enumerate()
@@ -207,7 +264,7 @@ pub fn waveform_to_event(waveform: &ProcessedWaveform, algorithm: &Algorithm) ->
         .unwrap();
 
     match algorithm {
-        Algorithm::Max => (x as u64 * 8, *y),
+        Algorithm::Max => vec![(x as u64 * 8, *y)],
         Algorithm::Likhovid { left, right } => {
             // TODO: move to processing
             let amplitude = {
@@ -217,7 +274,22 @@ pub fn waveform_to_event(waveform: &ProcessedWaveform, algorithm: &Algorithm) ->
                 crop.iter().sum::<f32>() / crop.len() as f32
             };
 
-            (x as u64 * 8, amplitude)
+            vec![(x as u64 * 8, amplitude)]
+        }
+        Algorithm::FirstPeak { threshold, left } => {
+            let pos = find_first_peak(waveform, *threshold as f32);
+            if let Some(pos) = pos {
+                let left = if &pos < left {
+                    0
+                } else {
+                    pos - left
+                };
+                // let length = (waveform.0.len() - pos) as f32;
+                let amplitude = waveform.0[left..waveform.0.len()].iter().sum::<f32>();
+                vec![(pos as u64 * 8, amplitude / 50.0)]
+            } else {
+                vec![]
+            }
         }
     }
 }
@@ -232,7 +304,7 @@ pub fn correct_amp(y0: f32, y1: f32, y2: f32) -> (f32, f32) {
     )
 }
 
-pub fn find_first_peak(waveform: &ProcessedWaveform, threshold: f32) -> usize {
+pub fn find_first_peak(waveform: &ProcessedWaveform, threshold: f32) -> Option<usize> {
     waveform.0
         .iter()
         .enumerate()
@@ -243,7 +315,6 @@ pub fn find_first_peak(waveform: &ProcessedWaveform, threshold: f32) -> usize {
                 && (*idx == waveform.0.len() - 1 || waveform.0[idx + 1] <= amp)
         })
         .map(|(idx, _)| idx)
-        .unwrap()
 }
 
 pub fn point_to_chunks(point: rsb_event::Point) -> Vec<Vec<(u8, Vec<[f64; 2]>)>> {
