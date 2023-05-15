@@ -36,7 +36,7 @@ impl Default for ProcessingParams {
                 // TODO: add to KeV corrections
                 convert_to_kev: true,
                 merge_close_events: true,
-                use_dead_time: true,
+                use_dead_time: false,
                 effective_dead_time: 4000,
                 merge_map: [
                     [false, true, false, false, false, false, false],
@@ -266,7 +266,6 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, algorithm: &Algorithm) -
     match algorithm {
         Algorithm::Max => vec![(x as u64 * 8, *y)],
         Algorithm::Likhovid { left, right } => {
-            // TODO: move to processing
             let amplitude = {
                 let left = if x >= *left { x - left } else { 0 };
                 let right = std::cmp::min(waveform.0.len(), x + right);
@@ -317,8 +316,7 @@ pub fn find_first_peak(waveform: &ProcessedWaveform, threshold: f32) -> Option<u
         .map(|(idx, _)| idx)
 }
 
-pub fn point_to_chunks(point: rsb_event::Point) -> Vec<Vec<(u8, Vec<[f64; 2]>)>> {
-    let limit_ns = 1_000_000;
+pub fn point_to_chunks(point: rsb_event::Point, limit_ns: u64) -> Vec<Vec<(u8, Vec<[f64; 2]>)>> {
 
     let mut chunks = vec![];
     chunks.push(vec![]);
@@ -327,26 +325,19 @@ pub fn point_to_chunks(point: rsb_event::Point) -> Vec<Vec<(u8, Vec<[f64; 2]>)>>
         for block in channel.blocks {
             for frame in block.frames {
                 let chunk_num = (frame.time / limit_ns) as usize;
-
+                
                 while chunks.len() < chunk_num + 1 {
                     chunks.push(vec![])
                 }
 
-                // TODO: Refactor with processing::frame_to_waveform
-                let waveform_len = frame.data.len() / 2;
-                let waveform = (0..waveform_len).map(|idx| {
-                    let x =
-                        (frame.time + 8u64 * (idx as u64) - (chunk_num as u64 * limit_ns)) as f64;
-                    let y = i16::from_le_bytes(frame.data[idx * 2..idx * 2 + 2].try_into().unwrap())
-                        as f64;
-                    [x / 1000.0, y]
-                });
+                let waveform = process_waveform(&frame_to_waveform(&frame));
 
-                let baseline = waveform.clone().take(16).map(|[_, y]| y).sum::<f64>() / 16.0;
                 chunks[chunk_num].push((
                     channel.id as u8,
-                    waveform.map(|[x, y]| [x, y - baseline]).collect::<Vec<_>>(),
-                ))
+                    waveform.0.iter().enumerate().map(|(idx, y)| {
+                        [(frame.time + 8u64 * (idx as u64) - (chunk_num as u64 * limit_ns)) as f64 / 1000.0, *y as f64]
+                    }).collect::<Vec<_>>(),
+                ));
             }
         }
     }
