@@ -17,12 +17,53 @@ pub fn color_for_index(idx: usize) -> Color32 {
 }
 
 #[cfg(feature = "plotly")]
-pub fn color_for_index_str(idx: usize) -> String {
+use plotly::color::Color;
+
+#[cfg(feature = "plotly")]
+pub fn color_for_index_str(idx: usize) -> impl Color {
+    
     let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
     let h = idx as f32 * golden_ratio;
-    let h = h * 360.0;
-    format!("hsl({}, 85%, 50%)", h)
+
+    let (r,g,b) = rgb_hsv::hsv_to_rgb((h, 0.85, 0.66));
+    format!("rgb({r}, {g}, {b})")
 }
+
+const DETECTOR_BORDERS: [[usize; 2]; 8] = [
+        [1, 3],
+        [1, 4],
+        [1, 7],
+        [2, 3],
+        [2, 5],
+        [2, 7],
+        [3, 4],
+        [4, 5],
+];
+
+pub fn check_neigbors_fast<T>(frames: &BTreeMap<usize, T>) -> bool {
+
+    let len = frames.len();
+    
+    match len {
+        0 => false,
+        1 => false,
+        2 => {
+            let [ch_1, ch_2] = {
+                let mut keys = frames.keys();
+                [*keys.next().unwrap(), *keys.next().unwrap()]
+            };
+
+            let border = if ch_1 < ch_2 {
+                [ch_1, ch_2]
+            } else {
+                [ch_2, ch_1]
+            };
+            DETECTOR_BORDERS.contains(&border)
+        }
+        _ => true
+    }
+} 
+
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct ProcessingParams {
@@ -33,11 +74,32 @@ pub struct ProcessingParams {
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct PostProcessingParams {
-    pub convert_to_kev: bool,
+    pub convert_to_kev: bool, // TODO: remove from this structure or from extract_amps
     pub merge_close_events: bool,
     pub merge_map: [[bool; 7]; 7],
     pub use_dead_time: bool,
     pub effective_dead_time: u64,
+}
+
+impl Default for PostProcessingParams {
+    fn default() -> Self {
+        Self {
+            // TODO: add to KeV corrections
+            convert_to_kev: true,
+            merge_close_events: true,
+            use_dead_time: false,
+            effective_dead_time: 4000,
+            merge_map: [
+                [false, true, false, false, false, false, false],
+                [false, false, false, true, false, false, false],
+                [false, false, false, false, true, false, false],
+                [false, false, false, false, false, false, true],
+                [true, false, false, false, false, false, false],
+                [true, true, true, true, true, false, true],
+                [false, false, true, false, false, false, false],
+            ],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,22 +112,7 @@ impl Default for ProcessingParams {
     fn default() -> Self {
         Self {
             algorithm: Algorithm::default(),
-            post_processing: PostProcessingParams {
-                // TODO: add to KeV corrections
-                convert_to_kev: true,
-                merge_close_events: true,
-                use_dead_time: false,
-                effective_dead_time: 4000,
-                merge_map: [
-                    [false, true, false, false, false, false, false],
-                    [false, false, false, true, false, false, false],
-                    [false, false, false, false, true, false, false],
-                    [false, false, false, false, false, false, true],
-                    [true, false, false, false, false, false, false],
-                    [true, true, true, true, true, false, true],
-                    [false, false, true, false, false, false, false],
-                ],
-            },
+            post_processing: PostProcessingParams::default(),
             histogram: HistogramParams { range: 0.0..27.0, bins: 270 }
         }
     }
@@ -80,7 +127,7 @@ pub enum Algorithm {
 
 impl Default for Algorithm {
     fn default() -> Self {
-        Self::Likhovid { left: 15, right: 36 }
+        Self::FirstPeak { threshold: 10, left: 8 }
     }
 }
 
@@ -204,14 +251,10 @@ pub fn extract_amplitudes(point: &rsb_event::Point, algorithm: &Algorithm, to_ke
     amplitudes
 }
 
-pub fn amplitudes_to_histogram(
-        mut amplitudes: BTreeMap<u64, BTreeMap<usize, f32>>, 
-        post_processing: PostProcessingParams,
-        histogram: HistogramParams
-    ) -> PointHistogram {
-    
+pub fn post_process(mut amplitudes: BTreeMap<u64, BTreeMap<usize, f32>>, post_processing: &PostProcessingParams) -> BTreeMap<u64, BTreeMap<usize, f32>> {
+
     let mut last_time: u64 = 0;
-    let filtered = amplitudes.iter_mut().filter_map(|(time, channels)| {
+    amplitudes.iter_mut().filter_map(|(time, channels)| {
 
         if post_processing.use_dead_time && last_time.abs_diff(*time) < post_processing.effective_dead_time {
             return None;
@@ -234,15 +277,24 @@ pub fn amplitudes_to_histogram(
             }
         }
 
-        Some((time, channels))
-    });
+        Some((*time, channels.clone()))
+    }).collect::<BTreeMap<_,_>>()
+    
+}
+
+pub fn amplitudes_to_histogram(
+        amplitudes: BTreeMap<u64, BTreeMap<usize, f32>>, 
+        histogram: HistogramParams
+    ) -> PointHistogram {
 
     let mut histogram = PointHistogram::from(histogram);
-    filtered.for_each(|(_, channels)| {
+
+    for (_, channels) in amplitudes {
         for (ch_num, amplitude) in channels {
-            histogram.add(*ch_num as u8, *amplitude)
+            histogram.add(ch_num as u8, amplitude)
         }
-    });
+    }
+
     histogram
 }
 

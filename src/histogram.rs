@@ -189,12 +189,15 @@ impl PointHistogram {
 
     #[cfg(feature = "plotly")]
     pub fn draw_plotly_each_channel(&self, plot: &mut Plot) {
+        use crate::color_for_index_str;
+
         self.channels.iter().for_each(|(ch_num, channel)| {
             let mut line = Scatter::new(self.x.clone(), channel.clone())
-                .mode(Mode::Lines).line(PlotlyLine::new().shape(LineShape::Hvh));
-
-
-
+                .mode(Mode::Lines).line(
+                    PlotlyLine::new()
+                    .color(color_for_index_str(*ch_num as usize))
+                    .shape(LineShape::Hvh));
+                
             line = line.name(format!("ch #{}", ch_num + 1));
 
             plot.add_trace(line);
