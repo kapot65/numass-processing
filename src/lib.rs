@@ -41,7 +41,7 @@ const DETECTOR_BORDERS: [[usize; 2]; 8] = [
 ];
 
 // checks if frame triggered pixels is neighbors 
-// (frame with 3 or more triggers considered as neighbors as due to probability )
+// (frame with 3 or more triggers considered as neighbors due to its probability)
 pub fn check_neigbors_fast<T>(frames: &BTreeMap<usize, T>) -> bool {
 
     let len = frames.len();
@@ -52,15 +52,18 @@ pub fn check_neigbors_fast<T>(frames: &BTreeMap<usize, T>) -> bool {
         2 => {
             let [ch_1, ch_2] = {
                 let mut keys = frames.keys();
-                [*keys.next().unwrap(), *keys.next().unwrap()]
+                [*keys.next().unwrap() + 1, *keys.next().unwrap() + 1]
             };
-
-            let border = if ch_1 < ch_2 {
-                [ch_1, ch_2]
+            if ch_1 == 6 || ch_2 == 6 {
+                return true;
             } else {
-                [ch_2, ch_1]
-            };
-            DETECTOR_BORDERS.contains(&border)
+                let border = if ch_1 < ch_2 {
+                    [ch_1, ch_2]
+                } else {
+                    [ch_2, ch_1]
+                };
+                !DETECTOR_BORDERS.contains(&border)
+            }
         }
         _ => true
     }
