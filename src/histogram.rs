@@ -93,8 +93,7 @@ impl PointHistogram {
         }
     }
 
-    #[cfg(feature = "egui")]
-    fn events_in_window(&self, left_border: f32, right_border: f32) -> BTreeMap<u8, usize> {
+    pub fn events_in_window(&self, left_border: f32, right_border: f32) -> BTreeMap<u8, usize> {
         self.channels.iter().map(|(ch_num, channel)| {
             let mut events_in_window = 0;
             channel.iter().enumerate().for_each(|(idx, y)| {
@@ -106,8 +105,7 @@ impl PointHistogram {
         }).collect::<BTreeMap<_, _>>()
     }
 
-    #[cfg(feature = "egui")]
-    fn events_in_window_all(&self, left_border: f32, right_border: f32) -> usize {
+    pub fn events_in_window_all(&self, left_border: f32, right_border: f32) -> usize {
         self.events_in_window(left_border, right_border).values().sum()
     }
 
