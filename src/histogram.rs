@@ -109,6 +109,33 @@ impl PointHistogram {
         self.events_in_window(left_border, right_border).values().sum()
     }
 
+    pub fn to_csv(&self, separator: char) -> String {
+        let mut data = String::new();
+        {
+            let mut row = String::new();
+            row.push_str(&format!("bin{separator}"));
+            for ch_num in self.channels.keys() {
+                row.push_str(&format!("ch {}{separator}", *ch_num + 1));
+            }
+            row.push('\n');
+
+            data.push_str(&row);
+        }
+
+        for (idx, bin) in self.x.iter().enumerate() {
+            let mut row = String::new();
+
+            row.push_str(&format!("{bin:.4}{separator}"));
+            for val in self.channels.values() {
+                row.push_str(&format!("{}{separator}", val[idx]));
+            }
+            row.push('\n');
+            data.push_str(&row);
+        }
+
+        data
+    }
+
     #[cfg(feature = "egui")]
     fn build_egui_hist(&self, y: &[f32])  -> Vec<[f64; 2]> {
         y.iter().enumerate().flat_map(|(idx, y)| {
