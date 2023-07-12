@@ -9,9 +9,7 @@ use {
 };
 
 #[cfg(feature = "plotly")]
-use {
-    plotly::{common::{Line as PlotlyLine, Mode, LineShape}, Scatter, Plot}
-};
+use plotly::{common::{Line as PlotlyLine, Mode, LineShape}, Scatter, Plot};
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct HistogramParams {

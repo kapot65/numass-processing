@@ -6,6 +6,8 @@ pub extern crate numass;
 use {histogram::PointHistogram, numass::protos::rsb_event, std::collections::BTreeMap};
 pub mod histogram;
 
+pub mod web; // TODO: move to numass-processing with web feature
+
 #[cfg(feature = "egui")]
 use egui::{Color32, epaint::Hsva, plot::{PlotUi, Line}};
 
