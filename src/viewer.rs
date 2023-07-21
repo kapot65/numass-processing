@@ -80,8 +80,9 @@ pub enum ViewerMode {
 
 // TODO: remove
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileCache {
+pub struct PointState {
     pub opened: bool,
     pub meta: Option<numass::NumassMeta>,
     pub histogram: Option<PointHistogram>,
+    pub counts: Option<usize>,
 }

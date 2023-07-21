@@ -91,7 +91,14 @@ impl PointHistogram {
         }
     }
 
-    pub fn events_in_window(&self, left_border: f32, right_border: f32) -> BTreeMap<u8, usize> {
+    pub fn events(&self, window: Option<Range<f32>>) -> BTreeMap<u8, usize> {
+
+        let (left_border, right_border) = if let Some(window) = window {
+            (window.start, window.end)
+        } else {
+            (self.range.start, self.range.end)
+        };
+
         self.channels.iter().map(|(ch_num, channel)| {
             let mut events_in_window = 0;
             channel.iter().enumerate().for_each(|(idx, y)| {
@@ -103,8 +110,8 @@ impl PointHistogram {
         }).collect::<BTreeMap<_, _>>()
     }
 
-    pub fn events_in_window_all(&self, left_border: f32, right_border: f32) -> usize {
-        self.events_in_window(left_border, right_border).values().sum()
+    pub fn events_all(&self, window: Option<Range<f32>>) -> usize {
+        self.events(window).values().sum()
     }
 
     pub fn to_csv(&self, separator: char) -> String {
@@ -161,7 +168,7 @@ impl PointHistogram {
         let left_border = bounds.min()[0] as f32;
         let right_border = bounds.max()[0] as f32;
 
-        let events_in_window = self.events_in_window_all(left_border, right_border);
+        let events_in_window = self.events_all(Some(left_border..right_border));
         let mut line = Line::new(self.build_egui_hist(&self.merge_channels()));
         if let Some(color) = color {
             line = line.color(color);
@@ -182,7 +189,7 @@ impl PointHistogram {
         let left_border = bounds.min()[0] as f32;
         let right_border = bounds.max()[0] as f32;
 
-        let events_in_window = self.events_in_window(left_border, right_border);
+        let events_in_window = self.events(Some(left_border..right_border));
         self.channels.iter().for_each(|(ch_num, channel)| {
 
             let events_in_window = events_in_window.get(&ch_num).unwrap_or(&0);
