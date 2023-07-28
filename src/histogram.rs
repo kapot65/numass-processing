@@ -151,8 +151,7 @@ impl PointHistogram {
         }).collect::<Vec<_>>()
     }
 
-    #[cfg(any(feature = "egui", feature = "plotly"))]
-    fn merge_channels(&self) -> Vec<f32> {
+    pub fn merge_channels(&self) -> Vec<f32> {
         let mut y_all: Vec<f32> = vec![0.0; self.x.len()];
         self.channels.iter().for_each(|(_, y)| {
             for (idx, val) in y.iter().enumerate() {
