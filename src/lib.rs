@@ -72,7 +72,7 @@ pub fn check_neigbors_fast<T>(frames: &BTreeMap<usize, T>) -> bool {
 } 
 
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub struct ProcessParams {
     pub algorithm: Algorithm,
     pub convert_to_kev: bool,
@@ -87,7 +87,7 @@ impl Default for ProcessParams {
     }
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub struct PostProcessParams {
     pub merge_close_events: bool,
     pub merge_map: [[bool; 7]; 7],
@@ -120,7 +120,7 @@ pub struct DeviceFrame {
     pub waveforms: BTreeMap<u8, ProcessedWaveform>,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub enum Algorithm {
     Max,
     Likhovid { left: usize, right: usize },
@@ -454,6 +454,7 @@ impl From<&rsb_event::point::channel::block::Frame> for RawWaveform {
 // TODO: add static correction
 pub fn process_waveform(waveform: impl Into<RawWaveform>) -> ProcessedWaveform {
     let waveform = waveform.into();
+    // let baseline = 0.0;
     let baseline = waveform.0.iter().take(16).sum::<i16>() as f32 / 16.0;
     ProcessedWaveform(waveform.0.iter().map(|bin| *bin as f32 - baseline).collect::<Vec<_>>())
 }
