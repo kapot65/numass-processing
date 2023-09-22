@@ -1,4 +1,5 @@
 use std::{path::PathBuf, ops::Range};
+use chrono::NaiveDateTime;
 use serde::{Serialize, Deserialize};
 use crate::{PostProcessParams, histogram::{PointHistogram, HistogramParams}, ProcessParams};
 
@@ -85,7 +86,8 @@ pub enum ViewerMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PointState {
     pub opened: bool,
-    pub meta: Option<numass::NumassMeta>,
     pub histogram: Option<PointHistogram>,
+    pub voltage: Option<f32>,
+    pub start_time: Option<NaiveDateTime>,
     pub counts: Option<usize>,
 }

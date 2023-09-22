@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 natord = "1.0.9"
+chrono = { version = "0.4.22", features = ["serde"] }
 
 serde = { version = "1.0.163", features = ["derive"] }
 # TODO: submit a bug report (nested pathes are not worling)
