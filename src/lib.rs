@@ -9,7 +9,7 @@ mod constants;
 use histogram::HistogramParams;
 use serde::{Deserialize, Serialize};
 use {histogram::PointHistogram, numass::protos::rsb_event, std::collections::BTreeMap};
-use constants::{KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_MAX};
+use constants::{KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD};
 
 #[cfg(feature = "egui")]
 use egui::{Color32, epaint::Hsva, plot::{PlotUi, Line}};
@@ -128,7 +128,8 @@ pub struct DeviceFrame {
 pub enum Algorithm {
     Max,
     Likhovid { left: usize, right: usize },
-    FirstPeak { threshold: i16, left: usize }
+    FirstPeak { threshold: i16, left: usize },
+    Trapezoid { left: usize, center: usize, right: usize },
 }
 
 impl Default for Algorithm {
@@ -301,8 +302,8 @@ impl From<ProcessedWaveform> for Vec<[f64; 2]> {
 // TODO: add static correction
 pub fn process_waveform(waveform: impl Into<RawWaveform>) -> ProcessedWaveform {
     let waveform = waveform.into();
-    // let baseline = 0.0;
-    let baseline = waveform.0.iter().take(16).sum::<i16>() as f32 / 16.0;
+    let baseline = 0.0; // TODO: add optional baseline correction
+    // let baseline = waveform.0.iter().take(16).sum::<i16>() as f32 / 16.0;
     ProcessedWaveform(waveform.0.iter().map(|bin| *bin as f32 - baseline).collect::<Vec<_>>())
 }
 
@@ -317,8 +318,11 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
             a * *amplitude + b
         }
         Algorithm::FirstPeak { .. } => {
-            
             let [a, b] = KEV_COEFF_FIRST_PEAK[ch_id as usize];
+            a * *amplitude + b
+        }
+        Algorithm::Trapezoid { .. } => {
+            let [a, b] = KEV_COEFF_TRAPEZIOD[ch_id as usize];
             a * *amplitude + b
         }
     }
@@ -359,6 +363,14 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, algorithm: &Algorithm) -
             } else {
                 vec![]
             }
+        }
+        Algorithm::Trapezoid { left, center, right } => {
+
+            let (pos, amplitude) = waveform.0.windows(left + center + right).map(|window| {
+                (window[left+center..].iter().sum::<f32>() - window[..*left].iter().sum::<f32>()) / (left + right) as f32
+            }).enumerate().max_by(|(_, a), (_, b)| a.total_cmp(b)).unwrap();
+            
+            vec![(pos as u16 * 8, amplitude)]
         }
     }
 }
