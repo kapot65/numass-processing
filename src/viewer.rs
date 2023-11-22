@@ -59,9 +59,12 @@ pub struct ViewerState {
 impl Default for ViewerState {
     fn default() -> Self {
         Self {
-            process: ProcessParams::default(),
+            process: ProcessParams {
+                algorithm: crate::Algorithm::Trapezoid { left: 6, center: 0, right: 6 },
+                convert_to_kev: false,
+            },
             post_process: PostProcessParams::default(),
-            histogram: HistogramParams { range: 0.0..27.0, bins: 270 }
+            histogram: HistogramParams { range: 0.0..50.0, bins: 250 }
         }
     }
 }
