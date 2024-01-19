@@ -1,53 +1,11 @@
+//! # Viewer
+//! Temporary module for viewer state and mode.
+//! TODO: remove from numass-processing module
+//! 
 use std::{path::PathBuf, ops::Range};
 use chrono::NaiveDateTime;
 use serde::{Serialize, Deserialize};
-use crate::{PostProcessParams, histogram::{PointHistogram, HistogramParams}, ProcessParams};
-
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum FSRepr {
-    File {
-        path: PathBuf,
-    },
-    Directory {
-        path: PathBuf,
-        children: Vec<FSRepr>,
-    },
-}
-
-impl FSRepr {
-    pub fn to_filename(&self) -> &str {
-        let path = match self {
-            FSRepr::File { path } => path,
-            FSRepr::Directory { path, children: _ } => path,
-        };
-        path.file_name().unwrap().to_str().unwrap()
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn expand_dir(path: PathBuf) -> Option<FSRepr> {
-
-        let meta = std::fs::metadata(&path).unwrap();
-        if meta.is_file() {
-            Some(FSRepr::File { path })
-        } else if meta.is_dir() {
-            let children = std::fs::read_dir(&path).unwrap();
-
-            let mut children = children
-                .filter_map(|child| {
-                    let entry = child.unwrap();
-                    FSRepr::expand_dir(entry.path())
-                })
-                .collect::<Vec<_>>();
-
-            children.sort_by(|a, b| natord::compare(a.to_filename(), b.to_filename()));
-
-            Some(FSRepr::Directory { path, children })
-        } else {
-            panic!()
-        }
-    }
-}
+use crate::{process::ProcessParams, postprocess::PostProcessParams, histogram::{PointHistogram, HistogramParams}};
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct ViewerState {
@@ -60,7 +18,7 @@ impl Default for ViewerState {
     fn default() -> Self {
         Self {
             process: ProcessParams {
-                algorithm: crate::Algorithm::Trapezoid { left: 6, center: 0, right: 6 },
+                algorithm: crate::process::Algorithm::Trapezoid { left: 6, center: 0, right: 6 },
                 convert_to_kev: true,
             },
             post_process: PostProcessParams {

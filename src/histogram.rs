@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "egui")]
 use {
     egui::{plot::{Line, PlotUi}, Color32},
-    crate::color_for_index
+    crate::utils::color_for_index
 };
 
 #[cfg(feature = "plotly")]
@@ -61,7 +61,6 @@ impl PointHistogram {
     }
 
     pub fn add(&mut self, ch_num: u8, amplitude: f32) {
-        let amplitude = amplitude;
 
         let min = self.range.start;
         let max = self.range.end;
@@ -218,7 +217,7 @@ impl PointHistogram {
 
     #[cfg(feature = "plotly")]
     pub fn draw_plotly_each_channel(&self, plot: &mut Plot) {
-        use crate::color_for_index_str;
+        use crate::utils::color_for_index_str;
 
         self.channels.iter().for_each(|(ch_num, channel)| {
             let mut line = Scatter::new(self.x.clone(), channel.clone())

@@ -1,4 +1,6 @@
-// TODO remove hardcode
+/// Temporal storage for constants used in builtin processing
+/// TODO: remove this module
+
 pub const KEV_COEFF_MAX: [[f32; 2]; 7] = [
     [0.059379287, 0.31509972],
     [0.060557768, 0.26772976],
@@ -231,4 +233,15 @@ pub const KEV_COEFF_TRAPEZIOD: [[f32; 2]; 7] = [
         0.10402631,
         0.141922,
     ],
+];
+
+pub const DETECTOR_BORDERS: [[usize; 2]; 8] = [
+        [1, 3],
+        [1, 4],
+        [1, 7],
+        [2, 3],
+        [2, 5],
+        [2, 7],
+        [3, 4],
+        [4, 5],
 ];
