@@ -2,7 +2,7 @@
 //! High-level processing + storage functions
 //! Should work with both local and remote storage.
 //! If possible, use functions from this module instead of [process](crate::process) and [postprocess](crate::postprocess) directly.
-use std::{fs::{self, metadata}, path::{Path, PathBuf}, time::SystemTime};
+use std::{fs, path::{Path, PathBuf}, time::SystemTime};
 
 use numass::NumassMeta;
 use protobuf::Message;

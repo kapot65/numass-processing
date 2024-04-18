@@ -5,8 +5,11 @@ use std::collections::BTreeMap;
 use numass::protos::rsb_event;
 use serde::{Deserialize, Serialize};
 
+pub type NumassFrame = BTreeMap<usize, ProcessedWaveform>;
+/// Numass point conveted to frames.
+pub type NumassWaveforms = BTreeMap<u64, NumassFrame>;
 /// Numass processed events type (both for processing + postprocessing and processing only).
-pub type NumassEvents = BTreeMap<u64, BTreeMap<usize, NumassEvent>>;
+pub type NumassEvents = BTreeMap<u64, BTreeMap<usize, Vec<NumassEvent>>>;
 /// Numass event (position in waveform, amplitude).
 pub type NumassEvent = (u16, f32);
 

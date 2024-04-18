@@ -6,10 +6,13 @@
 
 use std::collections::BTreeMap;
 
+#[cfg(feature = "egui")]
+use egui::plot::{Line, PlotUi};
+
 use numass::protos::rsb_event;
 use serde::{Deserialize, Serialize};
 
-use crate::{constants::{KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD}, types::{NumassEvent, NumassEvents, ProcessedWaveform, RawWaveform}};
+use crate::{constants::{KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD}, types::{NumassEvent, NumassEvents, NumassWaveforms, ProcessedWaveform, RawWaveform}, utils::color_for_index};
 
 
 /// Built-in algorithms params for processing the data.
@@ -43,11 +46,27 @@ impl Default for ProcessParams {
     }
 }
 
+pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
+    let mut waveforms = BTreeMap::new();
+
+    for channel in &point.channels {
+        for block in &channel.blocks {
+            for frame in &block.frames {
+                let entry = waveforms.entry(frame.time).or_insert(BTreeMap::new());
+                let waveform = process_waveform(frame);
+                entry.insert(channel.id as usize, waveform);
+            }
+        }
+    }
+    waveforms
+}
+
 /// Built-in processing algorithm.
 /// Function will extract events point wafevorms and keeps its hierarchy.
 /// Do not use this function directly without reason, use [process_point](crate::storage::process_point) instead.
 pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> NumassEvents {
 
+    // TODO: merge with extract_waveforms (will affects performance?)
     let mut amplitudes = BTreeMap::new();
 
     for channel in &point.channels {
@@ -57,13 +76,13 @@ pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> Numas
 
                 let waveform = process_waveform(frame);
 
-                for (time, amp) in waveform_to_events(&waveform, &params.algorithm) {
-                    let amp = if params.convert_to_kev {
+                for (time, amp) in waveform_to_events(&waveform, channel.id as u8, &params.algorithm, #[cfg(feature = "egui")] None) {
+                    let amp: f32 = if params.convert_to_kev {
                         convert_to_kev(&amp, channel.id as u8, &params.algorithm)
                     } else {
                         amp
                     };
-                    entry.insert(channel.id as usize, (time, amp));
+                    entry.entry(channel.id as usize).or_insert(Vec::new()).push((time, amp));
                 }
             }
         }
@@ -107,7 +126,8 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
 
 /// Extract events from single waveform.
 /// Do not use this function directly without reason, use [extract_events](crate::process::extract_events) instead.
-pub fn waveform_to_events(waveform: &ProcessedWaveform, algorithm: &Algorithm) -> Vec<NumassEvent> {
+/// TODO: add ui argument description
+pub fn waveform_to_events(waveform: &ProcessedWaveform, ch_id: u8, algorithm: &Algorithm, #[cfg(feature = "egui")] ui: Option<&mut PlotUi>) -> Vec<NumassEvent> {
     let (x, y) = waveform.0
         .iter()
         .enumerate()
@@ -145,9 +165,21 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, algorithm: &Algorithm) -
         }
         Algorithm::Trapezoid { left, center, right } => {
 
-            let (pos, amplitude) = waveform.0.windows(left + center + right).map(|window| {
+            let filtered = waveform.0.windows(left + center + right).map(|window| {
                 (window[left+center..].iter().sum::<f32>() - window[..*left].iter().sum::<f32>()) / (left + right) as f32
-            }).take(100).enumerate().max_by(|(_, a), (_, b)| a.total_cmp(b)).unwrap();
+            });
+
+            #[cfg(feature = "egui")]
+            if let Some(ui) = ui {
+                let line = Line::new(
+                    filtered.clone().enumerate().map(|(idx, amp)| [(idx) as f64, amp as f64]).collect::<Vec<_>>())
+                    .color(color_for_index(ch_id as usize))
+                    .name(format!("filtered ch# {}", ch_id + 1))
+                    .style(egui::plot::LineStyle::Dashed { length: 10.0 });
+                ui.line(line);
+            }
+
+            let (pos, amplitude) = filtered.take(100).enumerate().max_by(|(_, a), (_, b)| a.total_cmp(b)).unwrap();
             
             vec![(pos as u16 * 8, amplitude)]
         }

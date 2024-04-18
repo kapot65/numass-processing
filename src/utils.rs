@@ -20,8 +20,10 @@ pub fn events_to_histogram(
     let mut histogram = PointHistogram::from(histogram);
 
     for (_, channels) in amplitudes {
-        for (ch_num, (_, amp)) in channels {
-            histogram.add(ch_num as u8, amp)
+        for (ch_num, events) in channels {
+            for (_, amp) in events {
+                histogram.add(ch_num as u8, amp)
+            }
         }
     }
 
