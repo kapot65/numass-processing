@@ -7,6 +7,8 @@ pub mod process;
 pub mod postprocess;
 pub mod types;
 pub mod utils;
+#[cfg(feature = "egui")]
+pub mod widgets;
 
 mod constants;
 
