@@ -143,7 +143,6 @@ impl UserInput for ProcessParams {
     }
 }
 
-
 impl UserInput for PostProcessParams {
     fn input(&self, ui: &mut egui::Ui, ctx: &egui::Context) -> Self {
 
@@ -199,23 +198,19 @@ impl UserInput for PostProcessParams {
                     });
     
                 let image = if ctx.style().visuals.dark_mode {
-                    egui_extras::image::RetainedImage::from_svg_bytes(
-                        "Detector.drawio.png",
-                        include_bytes!("../resources/detector_dark.svg"),
-                    ).unwrap()
+                    egui::include_image!("../resources/detector_dark.svg")
+                    //     "Detector.drawio.png",
+                    //     include_bytes!(),
+                    // ).unwrap()
                 } else {
-                    egui_extras::image::RetainedImage::from_svg_bytes(
-                        "Detector.drawio.png",
-                        include_bytes!("../resources/detector_light.svg"),
-                    ).unwrap()
+                    egui::include_image!("../resources/detector_light.svg")
+                    //     "Detector.drawio.png",
+                    //     include_bytes!("../resources/detector_light.svg"),
+                    // ).unwrap()
                 };
-    
-                image.show(ui);
+                ui.image(image);
             });
         });
-        
-    
-        ui.set_enabled(true);
     
         PostProcessParams { 
             use_dead_time,

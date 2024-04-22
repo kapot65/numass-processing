@@ -8,7 +8,8 @@ use std::collections::BTreeMap;
 
 #[cfg(feature = "egui")]
 use {
-    egui::{plot::{HLine, VLine, Line, PlotUi}, Color32},
+    egui_plot::{HLine, VLine, Line, PlotUi},
+    egui::Color32,
     crate::utils::color_for_index
 };
 
@@ -261,7 +262,7 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, _ch_id: u8, algorithm: &
                     filtered.clone().into_iter().enumerate().map(|(idx, amp)| [(idx + offset) as f64, amp as f64]).collect::<Vec<_>>())
                     .color(color_for_index(_ch_id as usize))
                     .name(format!("filtered ch# {}", _ch_id + 1))
-                    .style(egui::plot::LineStyle::Dashed { length: 10.0 });
+                    .style(egui_plot::LineStyle::Dashed { length: 10.0 });
                 ui.line(line);
 
                 ui.hline(

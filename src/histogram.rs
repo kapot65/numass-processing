@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "egui")]
 use {
-    egui::{plot::{Line, PlotUi}, Color32},
+    egui_plot::{Line, PlotUi},
+    egui::Color32,
     crate::utils::color_for_index
 };
 

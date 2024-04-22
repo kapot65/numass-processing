@@ -4,7 +4,8 @@
 use std::collections::BTreeMap;
 
 #[cfg(feature = "egui")] use {
-    egui::{Color32, epaint::Hsva, plot::{Line, PlotUi}},
+    egui_plot::{Line, PlotUi},
+    egui::{Color32, epaint::Hsva},
     crate::types::{ProcessedWaveform, RawWaveform}
 };
 #[cfg(feature = "plotly")]
