@@ -25,7 +25,7 @@ pub async fn process_point(filepath: &Path, process: &ProcessParams) -> Option<(
             Some((
                 meta.unwrap(),
                 Some(crate::process::extract_events(
-                    &point,
+                    point,
                     process,
                 ))
             ))

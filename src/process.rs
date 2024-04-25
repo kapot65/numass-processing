@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 #[cfg(feature = "egui")]
 use {
-    egui_plot::{HLine, VLine, Line, PlotUi},
+    egui_plot::{HLine, VLine, Line, PlotUi, MarkerShape, Points},
     egui::Color32,
     crate::utils::color_for_index
 };
@@ -16,7 +16,7 @@ use {
 use numass::protos::rsb_event;
 use serde::{Deserialize, Serialize};
 
-use crate::{constants::{baseline_2024_03, KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD}, types::{NumassEvent, NumassEvents, NumassWaveforms, ProcessedWaveform, RawWaveform}};
+use crate::{constants::{baseline_2024_03, KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD}, types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms, ProcessedWaveform, RawWaveform}};
 
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
@@ -42,6 +42,7 @@ pub enum Algorithm {
 
 /// Неизменяемые параметры, необходимые для обработки кадра
 /// могут либо задаваться статично, либо на каждую точку
+/// TODO: add default derive
 #[derive(Clone)]
 pub struct StaticProcessParams {
     pub baseline: Option<Vec<f32>> // TODO: make more versatile
@@ -117,38 +118,22 @@ pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
 /// Built-in processing algorithm.
 /// Function will extract events point wafevorms and keeps its hierarchy.
 /// Do not use this function directly without reason, use [process_point](crate::storage::process_point) instead.
-pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> NumassEvents {
+pub fn extract_events(point: rsb_event::Point, params: &ProcessParams) -> NumassEvents {
+    let (static_params, point) = {
+        (StaticProcessParams::from_point(&point), extract_waveforms(&point))
+    };
 
-    // TODO: merge with extract_waveforms (will affects performance?)
-    let mut amplitudes = BTreeMap::new();
-    let static_params = StaticProcessParams::from_point(point);
-
-    for channel in &point.channels {
-        for block in &channel.blocks {
-            for frame in &block.frames {
-                let entry = amplitudes.entry(frame.time).or_insert(BTreeMap::new());
-
-                let waveform = process_waveform(frame);
-
-                for (time, amp) in waveform_to_events(
-                    &waveform, 
-                    channel.id as u8, 
-                    &params.algorithm, 
-                    &static_params,
-                    #[cfg(feature = "egui")] None
-                ) {
-                    let amp: f32 = if params.convert_to_kev {
-                        convert_to_kev(&amp, channel.id as u8, &params.algorithm)
-                    } else {
-                        amp
-                    };
-                    entry.entry(channel.id as usize).or_insert(Vec::new()).push((time, amp));
+    point.into_iter().map(|(time, frame)| {
+        let mut events = frame_to_events(&frame, &params.algorithm, &static_params, #[cfg(feature = "egui")] None);
+        if params.convert_to_kev {
+            events.iter_mut().for_each(|(_, event)| {
+                if let FrameEvent::Event { amplitude, channel, .. } = event {
+                    *amplitude = convert_to_kev(amplitude, *channel, &params.algorithm);
                 }
-            }
+            });
         }
-    }
-
-    amplitudes
+        (time, events)
+    }).collect::<BTreeMap<_, _>>()
 }
 
 /// Prepare raw waveform stored in protobuf message for processing.
@@ -183,61 +168,64 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
     }
 }
 
+
 /// Extract events from single waveform.
 /// Do not use this function directly without reason, use [extract_events](crate::process::extract_events) instead.
 /// TODO: add ui argument description
-pub fn waveform_to_events(
-    waveform: &ProcessedWaveform, 
-    _ch_id: u8, algorithm: &Algorithm,
+pub fn frame_to_events(
+    frame: &NumassFrame, 
+    algorithm: &Algorithm,
     static_params: &StaticProcessParams,
     #[cfg(feature = "egui")] ui: Option<&mut PlotUi>
 ) -> Vec<NumassEvent> {
     
-
-    match algorithm {
+    let mut events = match algorithm {
         Algorithm::Max => {
-            let (x, y) = waveform.0
-            .iter()
-            .enumerate()
-            .max_by(|first, second| {
-                first.1.partial_cmp(second.1).unwrap()
-            })
-            .unwrap();
-            vec![(x as u16 * 8, *y)]
+            frame.iter().map(|(ch_id, waveform)| {
+                let (x, y) = waveform.0
+                    .iter()
+                    .enumerate()
+                    .max_by(|first, second| {
+                        first.1.partial_cmp(second.1).unwrap()
+                    })
+                .unwrap();
+
+                (x as u16 * 8, FrameEvent::Event { channel: *ch_id, amplitude: *y, size: 1 })
+            }).collect::<Vec<_>>()
         }
         Algorithm::Likhovid { left, right } => {
+            frame.iter().map(|(ch_id, waveform)| {
+                let (x, _) = waveform.0
+                .iter()
+                .enumerate()
+                .max_by(|first, second| {
+                    first.1.partial_cmp(second.1).unwrap()
+                })
+                .unwrap();
 
-            let (x, _) = waveform.0
-            .iter()
-            .enumerate()
-            .max_by(|first, second| {
-                first.1.partial_cmp(second.1).unwrap()
-            })
-            .unwrap();
+                let amplitude = {
+                    let left = if x >= *left { x - left } else { 0 };
+                    let right = std::cmp::min(waveform.0.len(), x + right);
+                    let crop = &waveform.0[left..right];
+                    crop.iter().sum::<f32>() / crop.len() as f32
+                };
 
-            let amplitude = {
-                let left = if x >= *left { x - left } else { 0 };
-                let right = std::cmp::min(waveform.0.len(), x + right);
-                let crop = &waveform.0[left..right];
-                crop.iter().sum::<f32>() / crop.len() as f32
-            };
-
-            vec![(x as u16 * 8, amplitude)]
+                (x as u16 * 8, FrameEvent::Event { channel: *ch_id, amplitude, size: 1 })
+            }).collect::<Vec<_>>()
         }
         Algorithm::FirstPeak { threshold, left } => {
-            let pos = find_first_peak(waveform, *threshold as f32);
-            if let Some(pos) = pos {
-                let left = if pos < *left {
-                    0
-                } else {
-                    pos - left
-                };
-                // let length = (waveform.0.len() - pos) as f32;
-                let amplitude = waveform.0[left..waveform.0.len()].iter().sum::<f32>();
-                vec![(pos as u16 * 8, amplitude / 50.0)]
-            } else {
-                vec![]
-            }
+            frame.iter().filter_map(|(ch_id, waveform)| {
+                find_first_peak(waveform, *threshold as f32).map(|pos| {
+                    let left = if pos < *left {
+                        0
+                    } else {
+                        pos - left
+                    };
+                    // let length = (waveform.0.len() - pos) as f32;
+                    let amplitude = waveform.0[left..waveform.0.len()].iter().sum::<f32>();
+                    (pos as u16 * 8, FrameEvent::Event { channel: *ch_id, amplitude: amplitude / 50.0, size: 1 } )
+                })
+            }).collect::<Vec<_>>()
         }
         Algorithm::Trapezoid { 
             left, center, right, 
@@ -246,64 +234,102 @@ pub fn waveform_to_events(
             reset_detection: HWResetParams { 
                 window: r_window, treshold: r_treshold, size: r_size } } => {
 
-            let baseline = if let StaticProcessParams { baseline: Some(baseline) } = static_params {
-                baseline[_ch_id as usize]
-            } else {
-                0.0
-            };
+            let mut reset: Option<(usize, usize)> = None;
+            frame.iter().for_each(|(_, waveform)| {
+                for i in 0..(waveform.0.len() - r_window) {
+                    if waveform.0[i] - waveform.0[i + r_window] > *r_treshold as f32 {
+                        if let Some(reset_last) = reset {
+                            reset = Some((i.min(reset_last.0), (i + r_size).max(reset_last.1)));
+                        } else {
+                            reset = Some((i, i + r_size))
+                        }
+                        break;
+                    }
+                }
+            });
 
-            let mut events = vec![];
+            #[cfg(feature = "egui")]
+            let mut filtered_all = BTreeMap::new();
 
-            let offset = left + center + right;
+            let mut events = frame.iter().flat_map(|(ch_id, waveform)| {
 
-            let filtered = waveform.0.windows(left + center + right).map(|window| {
-                (window[left+center..].iter().sum::<f32>() - window[..*left].iter().sum::<f32>()) / (left + right) as f32 - baseline
+                let baseline = if let StaticProcessParams { baseline: Some(baseline) } = static_params {
+                    baseline[*ch_id as usize]
+                } else {
+                    0.0
+                };
+    
+                let mut events = vec![];
+    
+                let offset = left + center + right;
+    
+                let filtered = waveform.0.windows(left + center + right).map(|window| {
+                    (window[left+center..].iter().sum::<f32>() - window[..*left].iter().sum::<f32>()) / (left + right) as f32 - baseline
+                }).collect::<Vec<_>>();
+
+                #[cfg(feature = "egui")]
+                if ui.is_some() {
+                    filtered_all.insert(*ch_id, filtered.clone());
+                }
+    
+                // #[cfg(feature = "egui")]
+                // let mut resets = vec![];
+                // #[cfg(feature = "egui")]
+                // let mut event_ranges = vec![];
+    
+                let mut i = 0;
+                while i < filtered.len() {
+                    
+                    if let Some((reset_start, reset_end)) = reset {
+                        if i == reset_start {
+                            i = reset_end;
+                            continue;
+                        }
+                    }
+    
+                    if (i == 0 ||  filtered[i - 1] < *treshold as f32) && filtered[i] >= *treshold as f32 {
+                        let mut energy = 0.0;
+                        let mut event_end = i;
+    
+                        while event_end < filtered.len() && filtered[event_end] >= *treshold as f32   {
+                            energy += filtered[event_end];
+                            event_end += 1
+                        }
+    
+                        if (event_end - i) >= *min_length {
+                            events.push((
+                                (i + offset) as u16 * 8, 
+                                FrameEvent::Event { channel: *ch_id, amplitude: energy / offset as f32, size: (event_end - i) as u16 }
+                            ));
+                        }
+    
+                        i = event_end;
+                        continue;
+                    }
+    
+                    i += 1;
+                }
+
+                events
             }).collect::<Vec<_>>();
 
-            #[cfg(feature = "egui")]
-            let mut resets = vec![];
-            #[cfg(feature = "egui")]
-            let mut event_ranges = vec![];
-
-            let mut i = 0;
-            while i < filtered.len() {
-                if i < filtered.len() - r_window && filtered[i] - filtered[i + r_window] > *r_treshold as f32 {
-                    #[cfg(feature = "egui")]
-                    resets.push(i);
-                    i += r_size;
-                    continue;
-                }
-
-                if (i == 0 ||  filtered[i - 1] < *treshold as f32) && filtered[i] >= *treshold as f32 {
-                    let mut energy = 0.0;
-                    let mut event_end = i;
-
-                    while event_end < filtered.len() && filtered[event_end] >= *treshold as f32   {
-                        energy += filtered[event_end];
-                        event_end += 1
-                    }
-
-                    if (event_end - i) >= *min_length {
-                        events.push(((i + offset) as u16 * 8, energy / offset as f32));
-                        #[cfg(feature = "egui")]
-                        event_ranges.push((i, event_end));
-                    }
-
-                    i = event_end;
-                    continue;
-                }
-
-                i += 1;
+            if let Some((reset_start, reset_end)) = reset {
+                events.push((reset_start as u16 * 8, FrameEvent::Reset { size: (reset_end - reset_start) as u16 }));
             }
 
+            // TODO: reimplemet
             #[cfg(feature = "egui")]
             if let Some(ui) = ui {
-                let line = Line::new(
-                    filtered.clone().into_iter().enumerate().map(|(idx, amp)| [(idx + offset) as f64, amp as f64]).collect::<Vec<_>>())
-                    .color(color_for_index(_ch_id as usize))
-                    .name(format!("filtered + baseline ch# {}", _ch_id + 1))
-                    .style(egui_plot::LineStyle::Dashed { length: 10.0 });
-                ui.line(line);
+
+                for (ch_id, filtered) in filtered_all {
+                    let offset = left + center + right;
+                    let line = Line::new(
+                        filtered.clone().into_iter().enumerate().map(|(idx, amp)| [(idx + offset) as f64, amp as f64]).collect::<Vec<_>>())
+                        .color(color_for_index(ch_id as usize))
+                        .name(format!("filtered + baseline ch# {}", ch_id + 1))
+                        .style(egui_plot::LineStyle::Dashed { length: 10.0 });
+                    ui.line(line);
+                }
 
                 ui.hline(
                     HLine::new(*treshold as f64)
@@ -311,26 +337,57 @@ pub fn waveform_to_events(
                     .name(format!("TRIGGER"))
                 );
 
-                for (idx, event_range) in event_ranges.into_iter().enumerate() {
-                    ui.vline(VLine::new((event_range.0 + offset) as f64)
-                        .color(color_for_index(_ch_id as usize))
-                        .name(format!("ev# {idx} ch# {}", _ch_id + 1))
-                    );
-                    ui.vline(VLine::new((event_range.1 + offset) as f64)
-                        .color(color_for_index(_ch_id as usize))
-                        .name(format!("ev# {idx} ch# {}", _ch_id + 1))
-                    );
-                }
+                events.iter().enumerate().for_each(|(idx, (pos, event))| {
+                    match event {
+                        &FrameEvent::Event { channel, amplitude, size } => {
+                            let ch = channel + 1;
+                            let name = format!("ev#{idx} ch# {ch}");
 
-                for reset in resets {
-                    ui.vline(VLine::new((reset + offset) as f64).color(Color32::WHITE).name(format!("RESET")));
-                    ui.vline(VLine::new((reset + r_size + offset) as f64).color(Color32::WHITE).name(format!("RESET")));
-                }
+                            ui.vline(VLine::new((*pos as f64) / 8.0).color(color_for_index(channel as usize)).name(name.clone()));
+                            ui.vline(VLine::new((*pos + size as u16 * 8) as f64 / 8.0).color(color_for_index(channel as usize)).name(name.clone()));
+                            ui.points(Points::new(vec![[*pos as f64 / 8.0, amplitude as f64]])
+                                .color(color_for_index(channel as usize))
+                                .shape(MarkerShape::Diamond)
+                                .filled(false)
+                                .radius(10.0)
+                                .name(name)
+                            );
+                        }
+                        &FrameEvent::Reset { size } => {
+                            ui.vline(VLine::new(*pos as f64 / 8.0).color(Color32::WHITE).name(format!("RESET")));
+                            ui.vline(VLine::new((*pos + size as u16 * 8) as f64 / 8.0).color(Color32::WHITE).name(format!("RESET")));
+                        }
+                        _ => {
+                            // TODO: implement
+                        }
+                    }
+                
+                })
+
+                // for (idx, event_range) in event_ranges.into_iter().enumerate() {
+                //     ui.vline(VLine::new((event_range.0 + offset) as f64)
+                //         .color(color_for_index(_ch_id as usize))
+                //         .name(format!("ev# {idx} ch# {}", _ch_id + 1))
+                //     );
+                //     ui.vline(VLine::new((event_range.1 + offset) as f64)
+                //         .color(color_for_index(_ch_id as usize))
+                //         .name(format!("ev# {idx} ch# {}", _ch_id + 1))
+                //     );
+                // }
+
+                // for reset in resets {
+                //     ui.vline(VLine::new((reset + offset) as f64).color(Color32::WHITE).name(format!("RESET")));
+                //     ui.vline(VLine::new((reset + r_size + offset) as f64).color(Color32::WHITE).name(format!("RESET")));
+                // }
             };
 
             events
         }
-    }
+    };
+
+    events.sort_by_key(|(pos, _)| *pos);
+
+    events
 }
 
 pub fn find_first_peak(waveform: &ProcessedWaveform, threshold: f32) -> Option<usize> {

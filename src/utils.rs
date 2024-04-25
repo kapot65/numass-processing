@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 #[cfg(feature = "plotly")]
 use plotly::color::Color;
 
-use crate::{constants::DETECTOR_BORDERS, histogram::{HistogramParams, PointHistogram}, types::NumassEvents};
+use crate::{constants::DETECTOR_BORDERS, histogram::{HistogramParams, PointHistogram}, types::{FrameEvent, NumassEvents}};
 
 pub fn events_to_histogram(
     amplitudes: NumassEvents, 
@@ -21,9 +21,9 @@ pub fn events_to_histogram(
     let mut histogram = PointHistogram::from(histogram);
 
     for (_, channels) in amplitudes {
-        for (ch_num, events) in channels {
-            for (_, amp) in events {
-                histogram.add(ch_num as u8, amp)
+        for (_, event) in channels {
+            if let FrameEvent::Event { channel, amplitude, .. } = event {
+                histogram.add(channel, amplitude)
             }
         }
     }

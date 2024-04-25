@@ -5,13 +5,30 @@ use std::collections::BTreeMap;
 use numass::protos::rsb_event;
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessedWaveform(pub Vec<f32>);
+
 pub type NumassFrame = BTreeMap<u8, ProcessedWaveform>;
 /// Numass point conveted to frames.
 pub type NumassWaveforms = BTreeMap<u64, NumassFrame>;
 /// Numass processed events type (both for processing + postprocessing and processing only).
-pub type NumassEvents = BTreeMap<u64, BTreeMap<usize, Vec<NumassEvent>>>;
+pub type NumassEvents = BTreeMap<u64, Vec<NumassEvent>>;
 /// Numass event (position in waveform, amplitude).
-pub type NumassEvent = (u16, f32);
+pub type NumassEvent = (u16, FrameEvent);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FrameEvent {
+    Event { channel: u8, amplitude: f32, size: u16 },
+    Overflow { channel: u8, size: u16 },
+    Reset { size: u16 },
+    Frame { size: u16 },
+}
+
+impl std::hash::Hash for FrameEvent {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
+    }
+}
 
 // TODO: add channel id
 #[derive(Debug, Clone)]
@@ -59,9 +76,6 @@ impl From<&rsb_event::point::channel::block::Frame> for RawWaveform {
         .collect::<Vec<_>>())
     }
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProcessedWaveform(pub Vec<f32>);
 
 impl From<ProcessedWaveform> for Vec<[f64; 2]> {
     fn from(waveform: ProcessedWaveform) -> Self {
