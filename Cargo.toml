@@ -10,7 +10,6 @@ natord = "1.0.9"
 chrono = { version = "0.4.22", features = ["serde"] }
 
 serde = { version = "1.0.163", features = ["derive"] }
-# TODO: submit a bug report (nested pathes are not worling)
 # numass = { git = "https://bitbucket.org/Kapot/dataforge-parser-numass.git", tag = "0.1.2" }
 numass = { path = "../dataforge-parser-numass" }
 

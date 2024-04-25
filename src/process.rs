@@ -16,7 +16,7 @@ use {
 use numass::protos::rsb_event;
 use serde::{Deserialize, Serialize};
 
-use crate::{constants::{KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD}, types::{NumassEvent, NumassEvents, NumassWaveforms, ProcessedWaveform, RawWaveform}};
+use crate::{constants::{baseline_2024_03, KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD}, types::{NumassEvent, NumassEvents, NumassWaveforms, ProcessedWaveform, RawWaveform}};
 
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
@@ -40,11 +40,35 @@ pub enum Algorithm {
     }
 }
 
+/// Неизменяемые параметры, необходимые для обработки кадра
+/// могут либо задаваться статично, либо на каждую точку
+#[derive(Clone)]
+pub struct StaticProcessParams {
+    pub baseline: Option<Vec<f32>> // TODO: make more versatile
+}
+
+impl StaticProcessParams {
+    pub fn from_point(point: &rsb_event::Point) -> Self {
+        let time = point.channels[0].blocks[0].time;
+        Self {
+            baseline: Some(vec![
+                0.0, // ch1
+                baseline_2024_03(time, 1), // ch2
+                baseline_2024_03(time, 2), // ch3
+                0.0, // ch4
+                baseline_2024_03(time, 4), // ch5
+                baseline_2024_03(time, 5), // ch6
+                baseline_2024_03(time, 6), // ch7
+            ])
+        }
+    }
+}
+
 pub const LIKHOVID_DEFAULT: Algorithm = Algorithm::Likhovid { left: 15, right: 36 };
 pub const FIRSTPEAK_DEFAULT: Algorithm = Algorithm::FirstPeak { threshold: 10, left: 8 };
 pub const TRAPEZOID_DEFAULT: Algorithm = Algorithm::Trapezoid { 
     left: 6, center: 15, right: 6,
-    treshold: 25,
+    treshold: 27,
     min_length: 10,
     reset_detection: HWResetParams {
         window: 10,
@@ -97,6 +121,7 @@ pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> Numas
 
     // TODO: merge with extract_waveforms (will affects performance?)
     let mut amplitudes = BTreeMap::new();
+    let static_params = StaticProcessParams::from_point(point);
 
     for channel in &point.channels {
         for block in &channel.blocks {
@@ -105,7 +130,13 @@ pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> Numas
 
                 let waveform = process_waveform(frame);
 
-                for (time, amp) in waveform_to_events(&waveform, channel.id as u8, &params.algorithm, #[cfg(feature = "egui")] None) {
+                for (time, amp) in waveform_to_events(
+                    &waveform, 
+                    channel.id as u8, 
+                    &params.algorithm, 
+                    &static_params,
+                    #[cfg(feature = "egui")] None
+                ) {
                     let amp: f32 = if params.convert_to_kev {
                         convert_to_kev(&amp, channel.id as u8, &params.algorithm)
                     } else {
@@ -126,9 +157,7 @@ pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> Numas
 /// TODO: transform to impl From<RawWaveform> for ProcessedWaveform and move to types.rs
 pub fn process_waveform(waveform: impl Into<RawWaveform>) -> ProcessedWaveform {
     let waveform = waveform.into();
-    // let baseline = 0.0; // TODO: add optional baseline correction
-    let baseline = waveform.0.iter().take(16).sum::<i16>() as f32 / 16.0;
-    ProcessedWaveform(waveform.0.iter().map(|bin| *bin as f32 - baseline).collect::<Vec<_>>())
+    ProcessedWaveform(waveform.0.iter().map(|bin| *bin as f32).collect::<Vec<_>>())
 }
 
 /// Built-in keV convertion (according to crate::constants).
@@ -157,7 +186,12 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
 /// Extract events from single waveform.
 /// Do not use this function directly without reason, use [extract_events](crate::process::extract_events) instead.
 /// TODO: add ui argument description
-pub fn waveform_to_events(waveform: &ProcessedWaveform, _ch_id: u8, algorithm: &Algorithm, #[cfg(feature = "egui")] ui: Option<&mut PlotUi>) -> Vec<NumassEvent> {
+pub fn waveform_to_events(
+    waveform: &ProcessedWaveform, 
+    _ch_id: u8, algorithm: &Algorithm,
+    static_params: &StaticProcessParams,
+    #[cfg(feature = "egui")] ui: Option<&mut PlotUi>
+) -> Vec<NumassEvent> {
     
 
     match algorithm {
@@ -212,12 +246,18 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, _ch_id: u8, algorithm: &
             reset_detection: HWResetParams { 
                 window: r_window, treshold: r_treshold, size: r_size } } => {
 
+            let baseline = if let StaticProcessParams { baseline: Some(baseline) } = static_params {
+                baseline[_ch_id as usize]
+            } else {
+                0.0
+            };
+
             let mut events = vec![];
 
             let offset = left + center + right;
 
             let filtered = waveform.0.windows(left + center + right).map(|window| {
-                (window[left+center..].iter().sum::<f32>() - window[..*left].iter().sum::<f32>()) / (left + right) as f32
+                (window[left+center..].iter().sum::<f32>() - window[..*left].iter().sum::<f32>()) / (left + right) as f32 - baseline
             }).collect::<Vec<_>>();
 
             #[cfg(feature = "egui")]
@@ -261,7 +301,7 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, _ch_id: u8, algorithm: &
                 let line = Line::new(
                     filtered.clone().into_iter().enumerate().map(|(idx, amp)| [(idx + offset) as f64, amp as f64]).collect::<Vec<_>>())
                     .color(color_for_index(_ch_id as usize))
-                    .name(format!("filtered ch# {}", _ch_id + 1))
+                    .name(format!("filtered + baseline ch# {}", _ch_id + 1))
                     .style(egui_plot::LineStyle::Dashed { length: 10.0 });
                 ui.line(line);
 
