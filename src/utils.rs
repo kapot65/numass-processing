@@ -60,9 +60,9 @@ pub fn check_neigbors_fast<T>(frames: &BTreeMap<usize, T>) -> bool {
                 true
             } else {
                 let border = if ch_1 < ch_2 {
-                    [ch_1, ch_2]
+                    [ch_1 as u8, ch_2 as u8]
                 } else {
-                    [ch_2, ch_1]
+                    [ch_2 as u8, ch_1 as u8]
                 };
                 !DETECTOR_BORDERS.contains(&border)
             }

@@ -266,7 +266,7 @@ pub const KEV_COEFF_TRAPEZIOD: [[f32; 2]; 7] = [
     ],
 ];
 
-pub const DETECTOR_BORDERS: [[usize; 2]; 8] = [
+pub const DETECTOR_BORDERS: [[u8; 2]; 8] = [
         [1, 3],
         [1, 4],
         [1, 7],
