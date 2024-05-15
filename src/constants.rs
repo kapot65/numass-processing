@@ -266,6 +266,38 @@ pub const KEV_COEFF_TRAPEZIOD: [[f32; 2]; 7] = [
     ],
 ];
 
+// TODO: calibrate
+pub const KEV_COEFF_LONGDIFF: [[f32; 2]; 7] = [
+    [
+        1.0,
+        0.0,
+    ],
+    [
+        1.0,
+        0.0,
+    ],
+    [
+        1.0,
+        0.0,
+    ],
+    [
+        1.0,
+        0.0,
+    ],
+    [
+        1.0,
+        0.0,
+    ],
+    [
+        1.0,
+        0.0,
+    ],
+    [
+        1.0,
+        0.0,
+    ],
+];
+
 pub const DETECTOR_BORDERS: [[u8; 2]; 6] = [
     [0, 1],
     [0, 4],

@@ -1,6 +1,6 @@
 //! This module contains egui widgets for processing configurations
 
-use crate::{histogram::HistogramParams, postprocess::PostProcessParams, process::{Algorithm, HWResetParams, ProcessParams}, process::{FIRSTPEAK_DEFAULT, LIKHOVID_DEFAULT, TRAPEZOID_DEFAULT}};
+use crate::{histogram::HistogramParams, postprocess::PostProcessParams, process::{Algorithm, HWResetParams, ProcessParams, FIRSTPEAK_DEFAULT, LIKHOVID_DEFAULT, LONGDIFF_DEFAULT, TRAPEZOID_DEFAULT}};
 
 pub trait UserInput {
     // draw input form and read changes from it
@@ -66,6 +66,15 @@ impl UserInput for ProcessParams {
             {
                 algorithm = TRAPEZOID_DEFAULT
             }
+            if ui
+                .add(egui::RadioButton::new(
+                    matches!(algorithm, Algorithm::LongDiff { .. }),
+                    "LongDiff",
+                ))
+                .clicked()
+            {
+                algorithm = LONGDIFF_DEFAULT
+            }
         });
 
         let algorithm = match algorithm {
@@ -89,7 +98,6 @@ impl UserInput for ProcessParams {
                 ui.add(egui::Slider::new(&mut threshold, 0..=400).text("threshold"));
                 Algorithm::FirstPeak { threshold, left }
             }
-
             Algorithm::Trapezoid { 
                 left, center, right, 
                 treshold, min_length,
@@ -134,6 +142,20 @@ impl UserInput for ProcessParams {
                     reset_detection: HWResetParams { 
                         window: r_window, treshold: r_treshold, size: r_size }}
             }
+            Algorithm::LongDiff { reset_detection: HWResetParams { window, treshold, size } } => {
+                ui.label("hw reset detection");
+
+                let mut window = window;
+                ui.add(egui::Slider::new(&mut window, 0..=100).text("diff window"));
+
+                let mut treshold = treshold;
+                ui.add(egui::Slider::new(&mut treshold, 0..=2000).text("diff treshold"));
+
+                let mut size = size;
+                ui.add(egui::Slider::new(&mut size, 0..=500).text("reset size"));
+
+                Algorithm::LongDiff { reset_detection: HWResetParams { window, treshold, size } }
+            }   
         };
 
         let mut convert_to_kev = self.convert_to_kev;
