@@ -9,11 +9,11 @@ use protobuf::Message;
 use serde::{Deserialize, Serialize};
 
 
-use crate::{process::ProcessParams, types::NumassEvents, numass::protos::rsb_event};
+use crate::{numass::protos::rsb_event, process::{ProcessParams, StaticProcessParams}, types::NumassEvents};
 
 /// Process point from the storage.
 /// This function will load point from storage (both local and remote) and executes [extract_events](crate::process::extract_events).
-pub async fn process_point(filepath: &Path, process: &ProcessParams) -> Option<(NumassMeta, Option<NumassEvents>)> {
+pub async fn process_point(filepath: &Path, process: &ProcessParams) -> Option<(NumassMeta, Option<(NumassEvents, StaticProcessParams)>)> {
 
     let meta = load_meta(filepath).await;
 
@@ -22,10 +22,12 @@ pub async fn process_point(filepath: &Path, process: &ProcessParams) -> Option<(
      })) = &meta {
         #[cfg(not(target_arch = "wasm32"))]
         {
+            // TODO: remove duplication with wasm32 branch. Maybe use async closures? https://rust-lang.github.io/async-book/07_workarounds/05_async_closures.html
             let point = load_point(filepath).await;
             Some((
-                meta.unwrap(),
+                meta.clone().unwrap(),
                 Some(crate::process::extract_events(
+                    meta,
                     point,
                     process,
                 ))
@@ -44,7 +46,7 @@ pub async fn process_point(filepath: &Path, process: &ProcessParams) -> Option<(
                     .unwrap();
             Some((
                 meta.unwrap(),
-                rmp_serde::from_slice::<Option<NumassEvents>>(&amplitudes_raw).unwrap()
+                rmp_serde::from_slice::<Option<(NumassEvents, StaticProcessParams)>>(&amplitudes_raw).unwrap()
             ))
         }
     } else {

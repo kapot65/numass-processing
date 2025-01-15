@@ -59,5 +59,17 @@ pub struct PointState {
     pub voltage: Option<f32>,
     pub start_time: Option<NaiveDateTime>,
     pub acquisition_time: Option<f32>,
+    pub live_time: Option<f32>,
     pub counts: Option<usize>,
 }
+
+pub const EMPTY_POINT: PointState = PointState {
+    opened: false,
+    histogram: None,
+    voltage: None,
+    start_time: None,
+    acquisition_time: None,
+    live_time: None,
+    counts: None,
+    modified: None,
+};

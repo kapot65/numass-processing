@@ -9,8 +9,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    constants::DETECTOR_BORDERS,
-    types::{FrameEvent, NumassEvent, NumassEvents},
+    constants::DETECTOR_BORDERS, process::StaticProcessParams, types::{FrameEvent, NumassEvent, NumassEvents}
 };
 
 #[cfg(feature = "egui")]
@@ -57,7 +56,10 @@ fn is_neighbour(ch_1: u8, ch_2: u8) -> bool {
 }
 
 /// Built-in postprocessing algorithm.
-pub fn post_process(amplitudes: NumassEvents, params: &PostProcessParams) -> NumassEvents {
+pub fn post_process(process_result: (NumassEvents, StaticProcessParams), params: &PostProcessParams) -> NumassEvents { // TODO?: return StaticProcessParams also?
+    
+    let (amplitudes, _) = process_result;
+
     if !params.merge_close_events {
         return amplitudes;
     }

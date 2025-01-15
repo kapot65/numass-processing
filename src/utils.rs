@@ -29,6 +29,20 @@ pub fn events_to_histogram(
     histogram
 }
 
+/// Корретировка времени прихода триггера
+/// 
+/// Для некоторых точек начиная с определенного триггера ко времени примешивается какое-то огромное число
+/// Это происходит как минимум с сеанса 2024_03
+/// Судя по всему это константная величина
+/// TODO: найти точное значение
+pub fn correct_frame_time(time: u64) -> u64 {
+    if time > 0xf000_0000_0000_0000 {
+        time - 0xffff_fff9_03da_0000
+    } else {
+        time
+    }
+}
+
 /// Parabolic event amplitude correction correction
 pub fn correct_amp(y0: f32, y1: f32, y2: f32) -> (f32, f32) {
     (
