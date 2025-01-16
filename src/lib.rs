@@ -3,6 +3,7 @@ pub mod histogram;
 pub mod viewer; // TODO: move to numass-processing with viewer feature
 
 pub mod storage;
+pub mod preprocess;
 pub mod process;
 pub mod postprocess;
 pub mod types;

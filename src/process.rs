@@ -13,16 +13,14 @@ use {
     egui_plot::{HLine, Line, PlotUi},
 };
 
-use numass::{protos::rsb_event, ExternalMeta, NumassMeta, Reply};
+use numass::{protos::rsb_event, NumassMeta,};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     constants::{
         KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF, KEV_COEFF_MAX,
         KEV_COEFF_TRAPEZIOD,
-    },
-    histogram::PointHistogram,
-    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms}, utils::correct_frame_time,
+    }, preprocess::PreprocessParams, types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms}, utils::correct_frame_time
 };
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
@@ -63,123 +61,6 @@ pub enum Algorithm {
     LongDiff {
         reset_detection: HWResetParams,
     },
-}
-
-/// Неизменяемые параметры, необходимые для обработки кадра
-/// могут либо задаваться статично, либо на каждую точку
-/// TODO: add default derive
-#[derive(Clone, Serialize, Deserialize)]
-pub struct StaticProcessParams { // TODO: rename (its not static)
-    pub baseline: Option<Vec<f32>>, // TODO: make more versatile
-
-    /// percentage of detector work time during acquisition
-    /// (0.0 - 1.0) where 1.0 means detector is working all the time
-    pub live_time: f32,
-}
-
-impl StaticProcessParams {
-    pub fn from_point(meta: Option<NumassMeta>, point: &rsb_event::Point, algo: &Algorithm) -> Self {
-        
-        let (acquisition_time, hv) =  if let Some(NumassMeta::Reply(Reply::AcquirePoint {
-            acquisition_time,
-            external_meta: Some(ExternalMeta {
-                hv1_value: Some(hv),
-                ..
-            }),
-            ..
-        })) = meta {
-            (acquisition_time, hv)
-        } else {
-            panic!("acquisition_time and/or hv1_value not found in metadata")
-        };
-
-        let live_time = if hv > 16e3 {
-            1.0
-        } else {
-
-            let mut trigger_density_local = PointHistogram::new_step(0.0..(acquisition_time * 1e9), 1e8);
-
-            for channel in &point.channels {
-                for block in &channel.blocks {
-                    for frame in &block.frames {
-                        trigger_density_local.add(0, correct_frame_time(frame.time) as f32);
-                    }
-                }
-            }
-            
-            if !trigger_density_local.channels.is_empty() {
-                let total_bins = trigger_density_local.channels[&0].len();
-                let empty_bins = trigger_density_local.channels[&0].iter().filter(|&&count| count == 0.0).count();
-                (total_bins - empty_bins) as f32 / total_bins as f32
-            } else {
-                1.0
-            }
-        };
-        
-        Self {
-            baseline: Some(baseline_from_point(point, algo)),
-            live_time
-        }
-    }
-}
-
-/// convert point to amplitudes histogram
-/// used in [baseline_from_point]
-/// extracted into single function for easier testing
-pub fn point_to_amp_hist(point: &rsb_event::Point, algo: &Algorithm) -> PointHistogram {
-    let (left, center, right) = match algo {
-        Algorithm::Trapezoid {
-            left,
-            center,
-            right,
-            ..
-        } => (*left, *center, *right),
-        _ => panic!("not implemented"),
-    };
-
-    let waveforms = extract_waveforms(point);
-
-    let mut amps = PointHistogram::new_step(-5.0..120.0, 0.5);
-
-    for (_, frames) in waveforms {
-        for (channel, waveform) in frames {
-            // TODO: search for another implementations in code and merge them
-            let filtered = waveform
-                .windows(left + center + right)
-                .map(|window| {
-                    (window[left + center..].iter().sum::<i16>()
-                        - window[..left].iter().sum::<i16>()) as f32
-                        / (left + right) as f32
-                })
-                .collect::<Vec<_>>();
-
-            amps.add_batch(channel, filtered);
-        }
-    }
-
-    amps
-}
-
-/// extact baseline for channels from point
-/// each channel is converted to amplitude histogramm
-/// and then baseline is calculated as histogramm peak
-fn baseline_from_point(point: &rsb_event::Point, algo: &Algorithm) -> Vec<f32> {
-    let mut baselines = vec![0.0; 7];
-
-    let amps = point_to_amp_hist(point, algo);
-
-    for (ch, hist) in amps.channels {
-        let mut max_idx = 0;
-        for (idx, amp) in hist.iter().enumerate() {
-            if *amp > hist[max_idx] {
-                max_idx = idx;
-            }
-        }
-
-        baselines[ch as usize] = amps.x[max_idx];
-    }
-
-    baselines
 }
 
 pub const LIKHOVID_DEFAULT: Algorithm = Algorithm::Likhovid {
@@ -262,10 +143,10 @@ pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
 /// Built-in processing algorithm.
 /// Function will extract events point wafevorms and keeps its hierarchy.
 /// Do not use this function directly without reason, use [process_point](crate::storage::process_point) instead.
-pub fn extract_events(meta: Option<NumassMeta>, point: rsb_event::Point, params: &ProcessParams) -> (NumassEvents, StaticProcessParams) {
+pub fn extract_events(meta: Option<NumassMeta>, point: rsb_event::Point, params: &ProcessParams) -> (NumassEvents, PreprocessParams) {
     let (static_params, point) = {
         (
-            StaticProcessParams::from_point(meta, &point, &params.algorithm),
+            PreprocessParams::from_point(meta, &point, &params.algorithm),
             extract_waveforms(&point),
         )
     };
@@ -328,7 +209,7 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
 pub fn frame_to_events(
     frame: &NumassFrame,
     algorithm: &Algorithm,
-    static_params: &StaticProcessParams,
+    static_params: &PreprocessParams,
     #[cfg(feature = "egui")] ui: &mut Option<&mut PlotUi>,
 ) -> Vec<NumassEvent> {
     let mut events = match algorithm {
@@ -421,7 +302,7 @@ pub fn frame_to_events(
             let mut events = frame
                 .iter()
                 .flat_map(|(ch_id, waveform)| {
-                    let baseline = if let StaticProcessParams {
+                    let baseline = if let PreprocessParams {
                         baseline: Some(baseline),
                         ..
                     } = static_params
@@ -594,7 +475,7 @@ pub fn frame_to_events(
             let mut events: Vec<(u16, FrameEvent)> = frame
                 .iter()
                 .filter_map(|(ch_id, waveform)| {
-                    let baseline = if let StaticProcessParams {
+                    let baseline = if let PreprocessParams {
                         baseline: Some(baseline),
                         ..
                     } = static_params

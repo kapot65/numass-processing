@@ -9,7 +9,9 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    constants::DETECTOR_BORDERS, process::StaticProcessParams, types::{FrameEvent, NumassEvent, NumassEvents}
+    constants::DETECTOR_BORDERS,
+    preprocess::{PreprocessParams, CUTOFF_BIN_SIZE},
+    types::{FrameEvent, NumassEvent, NumassEvents},
 };
 
 #[cfg(feature = "egui")]
@@ -22,6 +24,9 @@ use {
 /// Postprocessing params.
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub struct PostProcessParams {
+    /// remove events inside [bad_blocks](crate::preprocess::PreprocessParams::bad_blocks) timestamps
+    pub cut_bad_blocks: bool,
+
     pub merge_splits_first: bool,
     pub merge_close_events: bool,
     pub ignore_borders: bool,
@@ -30,10 +35,59 @@ pub struct PostProcessParams {
 impl Default for PostProcessParams {
     fn default() -> Self {
         Self {
+            cut_bad_blocks: true,
             merge_splits_first: false,
             merge_close_events: true,
             ignore_borders: false,
         }
+    }
+}
+
+/// Built-in postprocessing algorithm.
+/// TODO?: return StaticProcessParams also?
+pub fn post_process(
+    process_result: (NumassEvents, PreprocessParams),
+    params: &PostProcessParams,
+) -> NumassEvents {
+    
+
+    let (amplitudes, preprocess_params) = process_result;
+
+    if !params.merge_close_events {
+        return amplitudes;
+    }
+
+    // TODO: think about code deduplication
+    if params.cut_bad_blocks {
+        amplitudes
+            .into_iter()
+            .filter(|(timestamp, _)| {
+                let curr_block = (timestamp / CUTOFF_BIN_SIZE) as usize;
+                !preprocess_params.bad_blocks.contains(&curr_block)
+            })
+            .map(|(time, events)| {
+                let events_postprocessed = post_process_frame(
+                    events,
+                    params,
+                    #[cfg(feature = "egui")]
+                    None,
+                );
+                (time, events_postprocessed)
+            })
+            .collect::<BTreeMap<_, _>>()
+    } else {
+        amplitudes
+            .into_iter()
+            .map(|(time, events)| {
+                let events_postprocessed = post_process_frame(
+                    events,
+                    params,
+                    #[cfg(feature = "egui")]
+                    None,
+                );
+                (time, events_postprocessed)
+            })
+            .collect::<BTreeMap<_, _>>()
     }
 }
 
@@ -53,29 +107,6 @@ fn is_neighbour(ch_1: u8, ch_2: u8) -> bool {
     };
 
     DETECTOR_BORDERS.contains(&border)
-}
-
-/// Built-in postprocessing algorithm.
-pub fn post_process(process_result: (NumassEvents, StaticProcessParams), params: &PostProcessParams) -> NumassEvents { // TODO?: return StaticProcessParams also?
-    
-    let (amplitudes, _) = process_result;
-
-    if !params.merge_close_events {
-        return amplitudes;
-    }
-
-    amplitudes
-        .into_iter()
-        .map(|(time, events)| {
-            let events_postprocessed = post_process_frame(
-                events,
-                params,
-                #[cfg(feature = "egui")]
-                None,
-            );
-            (time, events_postprocessed)
-        })
-        .collect::<BTreeMap<_, _>>()
 }
 
 fn merge_splits(
@@ -180,7 +211,8 @@ fn merge_splits(
 
     to_remove.sort();
     to_remove.iter().rev().for_each(|&idx| {
-        if idx < events.len() { // TODO: find solution
+        if idx < events.len() {
+            // TODO: find solution
             events.remove(idx);
         }
     });

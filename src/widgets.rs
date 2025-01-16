@@ -178,12 +178,15 @@ impl UserInput for ProcessParams {
 impl UserInput for PostProcessParams {
     fn input(&self, ui: &mut egui::Ui, ctx: &egui::Context) -> Self {
 
+        let mut cut_bad_blocks = self.cut_bad_blocks;
         let mut merge_splits_first = self.merge_splits_first;
         let mut merge_close_events = self.merge_close_events;
         let mut ignore_borders = self.ignore_borders;
     
         ui.add_enabled_ui(true, |ui| { // TODO: fix this
             ui.label("Postprocessing params");
+
+            ui.checkbox(&mut cut_bad_blocks, "cut_bad_blocks");
             
             ui.checkbox(&mut merge_splits_first, "merge splits first");
             ui.checkbox(&mut merge_close_events, "merge close events");
@@ -206,6 +209,7 @@ impl UserInput for PostProcessParams {
         });
     
         PostProcessParams {
+            cut_bad_blocks,
             merge_splits_first,
             merge_close_events,
             ignore_borders
