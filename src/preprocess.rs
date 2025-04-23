@@ -160,7 +160,7 @@ pub fn point_to_amp_hist(point: &rsb_event::Point, algo: &Algorithm) -> PointHis
             center,
             right,
             ..
-        } => (*left, *center, *right),
+        } => (*left as usize, *center as usize, *right as usize),
         _ => panic!("not implemented"),
     };
 

@@ -21,6 +21,46 @@ use {
     std::collections::HashSet,
 };
 
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
+#[derive(Default)]
+pub struct ChannelIgnore {
+    pub ch1: bool,
+    pub ch2: bool,
+    pub ch3: bool,
+    pub ch4: bool,
+    pub ch5: bool,
+    pub ch6: bool,
+    pub ch7: bool
+}
+
+impl From<ChannelIgnore> for [bool; 7] {
+    fn from(value: ChannelIgnore) -> Self {
+        [
+            value.ch1,
+            value.ch2,
+            value.ch3,
+            value.ch4,
+            value.ch5,
+            value.ch6,
+            value.ch7
+        ]
+    }
+}
+
+impl From<[bool; 7]> for ChannelIgnore {
+    fn from(value: [bool; 7]) -> Self {
+        ChannelIgnore {
+            ch1: value[0],
+            ch2: value[1],
+            ch3: value[2],
+            ch4: value[3],
+            ch5: value[4],
+            ch6: value[5],
+            ch7: value[6]
+        }
+    }
+}
+
 #[repr(C)]
 /// Postprocessing params.
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
@@ -33,7 +73,7 @@ pub struct PostProcessParams {
     pub ignore_borders: bool,
 
     /// ignore channels with index in this array set to true. Default is false for all channels.
-    pub ignore_channels: [bool; 7],
+    pub ignore_channels: ChannelIgnore,
 }
 
 impl Default for PostProcessParams {
@@ -44,7 +84,7 @@ impl Default for PostProcessParams {
             merge_splits_first: false,
             merge_close_events: true,
             ignore_borders: false,
-            ignore_channels: [false; 7],
+            ignore_channels: ChannelIgnore::default(),
         }
     }
 }
@@ -113,7 +153,7 @@ pub fn post_process(
 
     if !params.merge_close_events {
         let mut amplitudes = amplitudes;
-        ignore_channels(&params.ignore_channels, &mut amplitudes);
+        ignore_channels(&params.ignore_channels.into(), &mut amplitudes);
         return (amplitudes, preprocess_params);
     }
 
@@ -150,7 +190,7 @@ pub fn post_process(
             .collect::<BTreeMap<_, _>>()
     };
 
-    ignore_channels(&params.ignore_channels, &mut amplitudes);
+    ignore_channels(&params.ignore_channels.into(), &mut amplitudes);
 
     (amplitudes, preprocess_params)
 }

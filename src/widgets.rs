@@ -215,7 +215,7 @@ impl UserInput for PostProcessParams {
         let mut merge_splits_first = self.merge_splits_first;
         let mut merge_close_events = self.merge_close_events;
         let mut ignore_borders = self.ignore_borders;
-        let mut ignore_channels = self.ignore_channels.to_owned();
+        let mut ignore_channels: [bool; 7] = self.ignore_channels.to_owned().into();
 
         ui.add_enabled_ui(true, |ui| {
             ui.label("Postprocessing params");
@@ -316,7 +316,7 @@ impl UserInput for PostProcessParams {
             merge_splits_first,
             merge_close_events,
             ignore_borders,
-            ignore_channels,
+            ignore_channels: ignore_channels.into(),
         }
     }
 }

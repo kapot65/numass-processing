@@ -28,9 +28,9 @@ use crate::{
 #[repr(C)]
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub struct HWResetParams {
-    pub window: usize,
+    pub window: u16,
     pub treshold: i16,
-    pub size: usize,
+    pub size: u16,
 }
 
 #[repr(C)]
@@ -48,19 +48,19 @@ pub enum SkipOption {
 pub enum Algorithm {
     Max,
     Likhovid {
-        left: usize,
-        right: usize,
+        left: u16,
+        right: u16,
     },
     FirstPeak {
         threshold: i16,
-        left: usize,
+        left: u16,
     },
     Trapezoid {
-        left: usize,
-        center: usize,
-        right: usize,
+        left: u16,
+        center: u16,
+        right: u16,
         treshold: i16,
-        min_length: usize,
+        min_length: u16,
         skip: SkipOption,
         reset_detection: HWResetParams,
     },
@@ -250,8 +250,11 @@ pub fn frame_to_events(
                     .max_by(|first, second| first.1.partial_cmp(second.1).unwrap())
                     .unwrap();
 
+                let left = *left as usize;
+                let right = *right as usize;
+
                 let amplitude = {
-                    let left = if x >= *left { x - left } else { 0 };
+                    let left = if x >= left { x - left } else { 0 };
                     let right = std::cmp::min(waveform.len(), x + right);
                     let crop = &waveform[left..right];
                     crop.iter().sum::<i16>() as f32 / crop.len() as f32 // TODO: does i16 enough for sum?
@@ -268,11 +271,12 @@ pub fn frame_to_events(
             })
             .collect::<Vec<_>>(),
         Algorithm::FirstPeak { threshold, left } => {
+            let left = *left as usize;
             frame
                 .iter()
                 .filter_map(|(ch_id, waveform)| {
                     find_first_peak(waveform, *threshold).map(|pos| {
-                        let left = if pos < *left { 0 } else { pos - left };
+                        let left = if pos < left { 0 } else { pos - left };
                         // let length = (waveform.0.len() - pos) as f32;
                         let amplitude = waveform[left..waveform.len()].iter().sum::<i16>();
                         (
@@ -296,6 +300,12 @@ pub fn frame_to_events(
             skip,
             reset_detection,
         } => {
+
+            let left = *left as usize;
+            let center = *center as usize;
+            let right = *right as usize;
+            let min_length = *min_length as usize;
+
             let reset = detect_reset(frame, reset_detection);
             let mut bad_frame = reset.is_some();
 
@@ -360,7 +370,7 @@ pub fn frame_to_events(
 
                     let filtered = {
                         let baseline = baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize]);
-                        let mut filtered = emulate_fir(waveform, *right, *center, *left);
+                        let mut filtered = emulate_fir(waveform, right, center, left);
                         filtered.iter_mut().for_each(|val| *val -= baseline); // QUESTION: what is perf decrease/increase of this (compared to 1 complex map)?
                         filtered
                     };
@@ -409,7 +419,7 @@ pub fn frame_to_events(
                                 }
                             }
 
-                            if (event_end - i) >= *min_length {
+                            if (event_end - i) >= min_length {
                                 events.push((
                                     (i + offset) as u16 * 8,
                                     FrameEvent::Event {
@@ -549,6 +559,10 @@ fn detect_reset(frame: &NumassFrameFast, params: &HWResetParams) -> Option<(usiz
         treshold,
         size,
     } = params;
+
+    let window = *window as usize;
+    let size = *size as usize;
+
     let mut reset: Option<(usize, usize)> = None;
     frame.iter().for_each(|(_, waveform)| {
         for i in 0..(waveform.len() - window) {
