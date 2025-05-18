@@ -57,10 +57,21 @@ impl Preprocess {
         point: &rsb_event::Point,
         algo: &Algorithm,
     ) -> Self {
-        let (acquisition_time, hv, start_time) =
+
+        let (acquisition_time, start_time) =
             if let Some(NumassMeta::Reply(Reply::AcquirePoint {
                 acquisition_time,
                 start_time,
+                ..
+            })) = meta
+            {
+                ((acquisition_time * 1e9) as u64, start_time)
+            } else {
+                panic!("acquisition_time/start_time not found in metadata")
+            };
+
+        let hv =
+            if let Some(NumassMeta::Reply(Reply::AcquirePoint {
                 external_meta:
                     Some(ExternalMeta {
                         hv1_value: Some(hv),
@@ -69,9 +80,9 @@ impl Preprocess {
                 ..
             })) = meta
             {
-                ((acquisition_time * 1e9) as u64, hv, start_time)
+                hv
             } else {
-                panic!("acquisition_time and/or hv1_value not found in metadata")
+                -1.0 // TODO: fix this!
             };
 
         let bad_blocks = if hv > CHECK_HV_THRESHOLD {
