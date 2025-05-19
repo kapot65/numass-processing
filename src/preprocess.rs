@@ -177,7 +177,7 @@ pub fn point_to_amp_hist(point: &rsb_event::Point, algo: &Algorithm) -> PointHis
 
     let waveforms = extract_waveforms(point);
 
-    let mut amps = PointHistogram::new_step(-5.0..120.0, 0.5);
+    let mut amps = PointHistogram::new_step(2.0..120.0, 0.5);
 
     for (_, frames) in waveforms {
         for (channel, waveform) in frames {
